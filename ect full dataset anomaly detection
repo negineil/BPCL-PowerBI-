@@ -1,0 +1,97 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.ensemble import IsolationForest
+
+# Load the dataset from the CSV file
+csv_file_path = 'C:\\Users\\Admin\\Desktop\\electronic-card-transactions-november-2024-csv-tables.csv'
+df = pd.read_csv(csv_file_path)
+
+# Display the column names
+print("Columns in the dataset:", df.columns)
+
+# Assume the column names in your dataset
+value_column = 'Data_value'
+units_column = 'UNITS' # Ensure the column name is 'UNITS'
+period_column = 'Period'
+status_column = 'STATUS'  # Assuming the column name for status is 'STATUS'
+
+# Rename the units column to 'UNITS' if it is not already
+if 'Units' in df.columns:
+    df.rename(columns={'Units': 'UNITS'}, inplace=True)
+
+# Check if the necessary columns exist in the dataset
+if value_column not in df.columns or units_column not in df.columns or period_column not in df.columns or status_column not in df.columns:
+    raise ValueError(f"Columns '{value_column}', '{units_column}', '{period_column}', or '{status_column}' not found in the dataset. Please check the column names.")
+else:
+    print(f"Columns '{value_column}', '{units_column}', '{period_column}', and '{status_column}' found in the dataset.")
+
+# Ensure the correct data types
+df[units_column] = df[units_column].astype(str)
+df[value_column] = df[value_column].astype(float)
+df[period_column] = df[period_column].astype(float)
+
+# Filter data based on status (assuming 'F' is the desired status)
+df = df[df[status_column] == 'F']
+
+
+# Identify and display rows with NaN values before any processing
+print("\nInitial NaN values in the dataset:")
+print(df.isna().sum())
+
+# Remove rows where UNITS column contains 'Number'
+df = df[df[units_column] != 'Number']
+df = df[df[units_column] != 'Percent']
+
+# Define a function to convert different units to dollars
+def convert_to_dollars(value, unit):
+    if unit == 'Dollars':
+        return value
+    else:
+        # Handle unexpected units by returning NaN
+        return np.nan  # Replace with your preferred way to handle unexpected units
+
+# Apply the conversion function with error handling
+try:
+    df[value_column] = df.apply(lambda row: convert_to_dollars(row[value_column], row[units_column]), axis=1)
+except ValueError as e:
+    print(f"Error during conversion: {e}")
+
+# Handle NaN values (consider forward fill or backward fill based on time series nature)
+df[value_column].fillna(method='ffill', inplace=True)
+
+# Identify and display rows with NaN values after handling
+print("\nNaN values in the dataset after handling:")
+print(df.isna().sum())
+
+# Filter out any rows that do not match the expected units if any remain
+df = df[df[units_column] == 'Dollars']
+
+# Drop the units column as it is no longer needed
+df.drop(columns=[units_column], inplace=True)
+
+# Fit the Isolation Forest model
+iso_forest = IsolationForest(contamination=0.05, random_state=42)
+df['anomaly'] = iso_forest.fit_predict(df[[value_column]])
+
+# Map anomaly results to 'Anomaly' and 'Normal'
+df['Anomaly'] = df['anomaly'].apply(lambda x: 'Anomaly' if x == -1 else 'Normal')
+
+# Plotting
+plt.figure(figsize=(12, 8))
+# Plot only the data points (no line)
+plt.scatter (df[period_column], df[value_column], label='Data_value', marker='o')
+
+# Highlight anomalies
+anomalies = df[df['Anomaly'] == 'Anomaly']
+plt.scatter(anomalies[period_column], anomalies[value_column], color='red', label='Anomaly', zorder=5)
+
+# Add labels and legend
+plt.xlabel('Period')
+plt.ylabel('Data_value')
+plt.title('Data_value with Anomalies (Isolation Forest)')
+plt.legend()
+plt.grid(True)
+
+# Show the plot
+plt.show()
